@@ -91,7 +91,7 @@ module Leeter
       self.mission_logs.logs.each do |mission_id, mission|
         # temporary skip for those without earlier states
         unless mission.name == ""
-          puts "%s%s" % [mission.present_name, mission.present_states]
+          puts "%s%s%s" % [mission.present_name, mission.present_source, mission.present_states]
         end
       end
     end
@@ -105,6 +105,9 @@ end
 class Mission
   attr_accessor :mission_id
   attr_accessor :name
+  attr_accessor :faction
+  attr_accessor :destination_system
+  attr_accessor :destination_station
   attr_accessor :history
 
   def initialize
@@ -114,33 +117,70 @@ class Mission
 
   def colors
     {
-      "Name"              => { fg: :black, bg: :orange },
-      "MissionCompleted"  => { fg: :black, bg: :green  },
-      "MissionAccepted"   => { fg: :black, bg: :gray   },
-      "MissionRedirected" => { fg: :black, bg: :blue   },
-      "MissionFailed"     => { fg: :black, bg: :red    },
-      "MissionAbandoned"  => { fg: :black, bg: :brown  }
+      "Name"              => { fg: :black, bg: :orange  },
+      "Faction"           => { fg: :gray,  bg: :purple  },
+      "Source"            => { fg: :black, bg: :skyblue },
+      "MissionCompleted"  => { fg: :black, bg: :green   },
+      "MissionAccepted"   => { fg: :black, bg: :gray    },
+      "MissionRedirected" => { fg: :black, bg: :blue    },
+      "MissionFailed"     => { fg: :gray, bg: :red      },
+      "MissionAbandoned"  => { fg: :gray, bg: :brown    }
     }
   end
 
 
   # temporary presenter
   def present_name
-    truncate_length = 30
-    name_string = self.name.ljust(truncate_length)
+    truncate_length = 60
+    name_string = ("%d %s" % [self.mission_id, self.name]).ljust(truncate_length)
     if name_string.length > truncate_length
       name_string = name_string.slice(0..truncate_length-4) + "..."
     end
+
     name_string = " %s " % name_string
     name_string = name_string.fg(self.colors['Name'][:fg])
     name_string = name_string.bg(self.colors['Name'][:bg])
   end
 
+  def present_source
+    truncate_length = 60
+
+    source_string = "%s" % self.faction
+
+    if self.destination_system || self.destination_station
+      source_string = "%s:" % [source_string]
+
+      if self.destination_system
+        source_string = "%s %s" % [source_string, self.destination_system.gsub("$MISSIONUTIL_MULTIPLE_FINAL_SEPARATOR;"," | ").gsub("$MISSIONUTIL_MULTIPLE_INNER_SEPARATOR;"," - ")]
+      end
+
+      if self.destination_station
+        source_string = "%s (%s)" % [source_string, self.destination_station]
+      end
+    end
+
+    source_string = source_string.ljust(truncate_length)
+    if source_string.length > truncate_length
+      source_string = source_string.slice(0..truncate_length-4) + "..."
+    end
+
+    source_string = " %s " % source_string
+    source_string = source_string.fg(self.colors['Source'][:fg])
+    source_string = source_string.bg(self.colors['Source'][:bg])
+  end
+
   def present_states
+    event_map = {
+      "MissionCompleted"  => "Complete  ",
+      "MissionFailed"     => "Failed    ",
+      "MissionAbandoned"  => "Abandoned ",
+      "MissionRedirected" => "Redirected"
+    }
+
 
     self.history.collect do |event_state, event|
 
-      state_string = " %s " % event['event']
+      state_string = " %s " % event_map[event['event']]
       state_string = state_string.fg(self.colors[event['event']][:fg])
       state_string = state_string.bg(self.colors[event['event']][:bg])
 
@@ -154,13 +194,18 @@ class Mission
     if self.history[lookup_key]
       raise "Already have event #{event_json['event']} for mission #{event_json['MissionID']}"
     else
-      self.history[lookup_key] = event_json
+      if event_json['event'] != 'MissionAccepted'
+        self.history[lookup_key] = event_json
+      end
     end
 
     case event_json['event']
     when 'MissionAccepted'
-      self.mission_id = event_json['MissionID']
-      self.name = event_json['LocalisedName']
+      self.mission_id          = event_json['MissionID']
+      self.name                = event_json['LocalisedName']
+      self.faction             = event_json['Faction']
+      self.destination_system  = event_json['DestinationSystem']
+      self.destination_station = event_json['DestinationStation']
     when 'MissionCompleted'
     when 'MissionAbandoned'
     when 'MissionFailed'
