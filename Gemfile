@@ -1,4 +1,5 @@
 source 'https://rubygems.org'
 
 gem 'pry'
-gem 'colored'
+gem 'rainbow'
+gem 'awesome_print'
