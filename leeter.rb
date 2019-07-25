@@ -181,11 +181,7 @@ class Mission
 
   # temporary presenter
   def present_name
-    truncate_length = 30
-    name_string = ("%d %s" % [self.mission_id, self.name]).ljust(truncate_length)
-    if name_string.length > truncate_length
-      name_string = name_string.slice(0..truncate_length-4) + "..."
-    end
+    name_string = self.truncpad(30, self.name)
 
     name_string = " %s " % name_string
     name_string = name_string.fg(self.colors['Name'][:fg])
@@ -193,8 +189,6 @@ class Mission
   end
 
   def present_source
-    truncate_length = 60
-
     source_string = "%s" % self.faction
 
     if self.destination_system || self.destination_station
@@ -209,10 +203,7 @@ class Mission
       end
     end
 
-    source_string = source_string.ljust(truncate_length)
-    if source_string.length > truncate_length
-      source_string = source_string.slice(0..truncate_length-4) + "..."
-    end
+    source_string = self.truncpad(60, source_string)
 
     source_string = " %s " % source_string
     source_string = source_string.fg(self.colors['Source'][:fg])
@@ -294,6 +285,6 @@ leeter_reader = Leeter::ReadLogFile.new
 
 leeter_reader.read_all_log_files
 leeter_reader.print_brief_log
-#leeter_reader.print_log_by_event_count
-#leeter_reader.print_mission_status
+leeter_reader.print_log_by_event_count
+leeter_reader.print_mission_status
 leeter_reader.print_market_transactions
