@@ -95,8 +95,49 @@ module Leeter
         end
       end
     end
-  end
-end
+
+    def print_market_transactions
+      
+    end
+
+    def truncpad truncate_length, input_string
+      output_string = input_string.ljust(truncate_length)
+      if input_string.length > truncate_length
+        output_string = input_string.slice(0..truncate_length-4) + "..."
+      end
+
+      output_string
+    end
+
+
+    def print_brief_log
+      event_blacklist = ['ReceiveText']
+      filtered_events = self.log_entries.select { |entry| !event_blacklist.include? entry['event'] }
+
+      available_colors = Rainbow::X11ColorNames::NAMES.dup.keys 
+
+      event_types  = filtered_events.group_by { |entry| entry['event'] }.keys
+      event_colors = {}
+
+      event_types.each do |event_type|
+
+        color_index = rand( available_colors.length )
+        color = available_colors.delete_at(color_index)
+        event_colors[event_type] = {fg: :black, bg: color}
+
+      end
+
+
+      filtered_events.each do |event|
+        str =       " #{event['timestamp'].strftime("%B %d, %Y %H:%M:%S")} ".bg(:gray).fg(:black)
+        event_bg = event_colors[event['event']][:bg]
+        event_fg = event_colors[event['event']][:fg]
+        str = str + (" %s " % self.truncpad(20, event['event'])).bg(event_bg).fg(event_fg)
+        puts str
+      end
+    end
+  end # class reader
+end # module leeter
 
 
 
@@ -128,10 +169,19 @@ class Mission
     }
   end
 
+  def truncpad truncate_length, input_string
+    output_string = input_string.ljust(truncate_length)
+    if input_string.length > truncate_length
+      output_string = input_string.slice(0..truncate_length-4) + "..."
+    end
+
+    output_string
+  end
+
 
   # temporary presenter
   def present_name
-    truncate_length = 60
+    truncate_length = 30
     name_string = ("%d %s" % [self.mission_id, self.name]).ljust(truncate_length)
     if name_string.length > truncate_length
       name_string = name_string.slice(0..truncate_length-4) + "..."
@@ -235,9 +285,15 @@ class MissionLogs
 end
 
 
+# MARKET CLASSES #######################################
+
+
+
 leeter_reader = Leeter::ReadLogFile.new
 
 
 leeter_reader.read_all_log_files
+leeter_reader.print_brief_log
 #leeter_reader.print_log_by_event_count
-leeter_reader.print_mission_status
+#leeter_reader.print_mission_status
+leeter_reader.print_market_transactions
