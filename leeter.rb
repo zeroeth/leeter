@@ -91,17 +91,63 @@ module Leeter
       self.mission_logs.logs.each do |mission_id, mission|
         # temporary skip for those without earlier states
         unless mission.name == ""
-          puts "%s%s%s" % [mission.present_name, mission.present_source, mission.present_states]
+          mission_timestamp = " #{mission.timestamp.strftime("%b %d, %Y %H:%M:%S")} ".bg(:gray).fg(:black)
+          puts "%s%s%s%s" % [mission_timestamp, mission.present_name, mission.present_source, mission.present_states]
         end
       end
     end
 
     def print_market_transactions
-      
+      event_whitelist = ['MarketBuy', 'MarketSell']
+      market_events = self.log_entries.select{ |entry| event_whitelist.include? entry['event'] }
+
+      market_event_map = { 'MarketBuy' => 'Buy', 'MarketSell' => 'Sell'}
+      market_colors = {
+        'time'       => { fg: :black, bg: :gray         },
+        'name'       => { fg: :gray,  bg: :purple       },
+        'star'       => { fg: :gray,  bg: :orange       },
+        'item'       => { fg: :gray,  bg: :yellow       },
+        'qty'        => { fg: :black, bg: :turquoise    },
+        'total'      => { fg: :gray,  bg: :midnightblue },
+        'MarketBuy'  => { fg: :black, bg: :pink         },
+        'MarketSell' => { fg: :gray,  bg: :blue         },
+      }
+
+      market_lookup = {}
+
+      # market event didnt capture all names using dock instead
+      docks = self.log_entries.select{ |entry| entry['event'] == "Docked" }
+      docks.each{ |dock| market_lookup[dock["MarketID"]] = dock }
+
+      market_events.each do |market_event|
+        market_time  = " #{market_event['timestamp'].strftime("%b %d, %Y %H:%M:%S")} "
+        market_name  = " %s " % self.truncpad(20, market_lookup[market_event['MarketID']]['StationName'])
+        market_star  = " %s " % self.truncpad(10, market_lookup[market_event['MarketID']]['StarSystem'])
+        market_item  = " %s " % self.truncpad(25, market_event['Type_Localised'] || market_event['Type'])
+        market_tran  = " %s " % self.truncpad(4,  market_event_map[market_event['event']])
+        market_qty   = " %s " % self.truncpad(4,  market_event['Count'])
+        market_total = " %s " % self.truncpad(10,  market_event['TotalSale'] || market_event['TotalCost'] )
+
+        market_time  =  market_time.bg(market_colors['time' ][:bg]).fg(market_colors['time' ][:fg])
+        market_name  =  market_name.bg(market_colors['name' ][:bg]).fg(market_colors['name' ][:fg])
+        market_star  =  market_star.bg(market_colors['star' ][:bg]).fg(market_colors['star' ][:fg])
+        market_item  =  market_item.bg(market_colors['item' ][:bg]).fg(market_colors['item' ][:fg])
+        market_tran  =  market_tran.bg(market_colors[market_event['event']][:bg]).fg(market_colors[market_event['event']][:fg])
+        market_qty   =   market_qty.bg(market_colors['qty'  ][:bg]).fg(market_colors['qty'  ][:fg])
+        market_total = market_total.bg(market_colors['total'][:bg]).fg(market_colors['total'][:fg])
+
+        puts "%s%s%s%s%s%s%s" % [market_time, market_name, market_star, market_item, market_tran, market_qty, market_total]
+
+      end
     end
 
     def truncpad truncate_length, input_string
-      output_string = input_string.ljust(truncate_length)
+      if input_string.kind_of? Numeric
+	input_string = input_string.to_s
+        output_string = input_string.rjust(truncate_length)
+      else
+        output_string = input_string.ljust(truncate_length)
+      end
       if input_string.length > truncate_length
         output_string = input_string.slice(0..truncate_length-4) + "..."
       end
@@ -112,6 +158,8 @@ module Leeter
 
     def print_brief_log
       event_blacklist = ['ReceiveText']
+      event_dedupes   = ['Scan', 'ShipTargeted', 'FSSSignalDiscovered']
+ 
       filtered_events = self.log_entries.select { |entry| !event_blacklist.include? entry['event'] }
 
       available_colors = Rainbow::X11ColorNames::NAMES.dup.keys 
@@ -128,12 +176,17 @@ module Leeter
       end
 
 
-      filtered_events.each do |event|
-        str =       " #{event['timestamp'].strftime("%B %d, %Y %H:%M:%S")} ".bg(:gray).fg(:black)
+      filtered_events.each_with_index do |event, index|
+
+	if event_dedupes.include?(event['event']) && index > 0 && filtered_events[index-1]['event'] == event['event']
+          next
+        end
+
+        event_timestamp = " #{event['timestamp'].strftime("%b %d, %Y %H:%M:%S")} ".bg(:gray).fg(:black)
         event_bg = event_colors[event['event']][:bg]
         event_fg = event_colors[event['event']][:fg]
-        str = str + (" %s " % self.truncpad(20, event['event'])).bg(event_bg).fg(event_fg)
-        puts str
+        event_info = (" %s " % self.truncpad(20, event['event'])).bg(event_bg).fg(event_fg)
+        puts "%s%s" % [event_timestamp, event_info] 
       end
     end
   end # class reader
@@ -145,6 +198,7 @@ end # module leeter
 
 class Mission
   attr_accessor :mission_id
+  attr_accessor :timestamp
   attr_accessor :name
   attr_accessor :faction
   attr_accessor :destination_system
@@ -203,7 +257,7 @@ class Mission
       end
     end
 
-    source_string = self.truncpad(60, source_string)
+    source_string = self.truncpad(30, source_string)
 
     source_string = " %s " % source_string
     source_string = source_string.fg(self.colors['Source'][:fg])
@@ -243,6 +297,7 @@ class Mission
     case event_json['event']
     when 'MissionAccepted'
       self.mission_id          = event_json['MissionID']
+      self.timestamp           = event_json['timestamp']
       self.name                = event_json['LocalisedName']
       self.faction             = event_json['Faction']
       self.destination_system  = event_json['DestinationSystem']
@@ -284,7 +339,7 @@ leeter_reader = Leeter::ReadLogFile.new
 
 
 leeter_reader.read_all_log_files
+#leeter_reader.print_log_by_event_count
 leeter_reader.print_brief_log
-leeter_reader.print_log_by_event_count
 leeter_reader.print_mission_status
 leeter_reader.print_market_transactions
